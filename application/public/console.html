@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lightroute – Live Log</title>
+<style>
+  :root { color-scheme: dark; }
+  body { background:#1e1e1e; color:#e6e6e6; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin:0; }
+  #bar { background:#2b2b2b; padding:.5rem .75rem; border-bottom:1px solid #444; display:flex; gap:1rem; align-items:center; }
+  #log { padding:.75rem; white-space:pre-wrap; font-size:13px; line-height:1.35; height: calc(100vh - 44px); overflow:auto; }
+  button { border:1px solid #888; background:#222; color:#fff; padding:0.25rem .75rem; border-radius:6px; cursor:pointer; }
+  button:hover { background:#2b2b2b; }
+</style>
+</head>
+<body>
+  <div id="bar">
+    <strong>Live Log</strong>
+    <div class="spacer"></div>
+    <button onclick="clearLog()">Clear</button>
+  </div>
+  <pre id="log"></pre>
+<script>
+  const logEl = document.getElementById('log');
+  function append(line) {
+    const atBottom = (logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 5);
+    logEl.textContent += line + '\n';
+    if (atBottom) logEl.scrollTop = logEl.scrollHeight;
+  }
+  function clearLog(){ logEl.textContent=''; }
+  const es = new EventSource('/logs');
+  es.onmessage = (ev) => append(ev.data);
+  es.onerror = () => append('[SSE] connection error… retrying…');
+</script>
+</body>
+</html>

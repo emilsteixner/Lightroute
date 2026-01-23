@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Lightroute Settings</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="style.css" />
+  <!-- Font Awesome for icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <style>
+    /* --- Visual refinements (non-breaking) --- */
+    .node { padding:.4rem .4rem; border:1px solid #242424; margin:.4rem 0; border-radius:.4rem; display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+    .pill { padding:.1rem .5rem; border-radius:999px; border:1px solid #5555; font-size:.85em; }
+    .box-head { display:flex; align-items:center; gap:.5rem; cursor:pointer; user-select:none; }
+    .box-head .section-icon { opacity:.85; }
+    .box-head .chev { margin-left:auto; transition: transform .18s ease; }
+    .box[data-collapsed="1"] .box-head .chev { transform: rotate(-90deg); }
+    .box-body { overflow:hidden; transition: max-height .22s ease, opacity .18s ease; }
+    .box[data-collapsed="1"] .box-body { max-height:0 !important; opacity:.0; pointer-events:none; }
+    .box[data-collapsed="0"] .box-body { opacity:1; }
+    .led { width:.8rem; height:.8rem; border-radius:50%; display:inline-block; margin-right:.35rem; border:1px solid #00000033; background:#8b0f0f88; vertical-align:middle; }
+    .led.on { background:#2ecc70cc; }
+    .led.sm { width:.6rem; height:.6rem; border-radius:50%; margin:0 .25rem 0 0; }
+    /* tiny spacing for the per-node LED + ping pill */
+    .node .group-right { margin-left:auto; display:flex; align-items:center; gap:.4rem; }
+    /* header branding */
+    .brand { display:flex; flex-direction:column; gap:0; }
+    .brand h1 { margin:0; line-height:1.2; }
+    .version { font-size:.5em; opacity:.6; font-weight:normal; }
+    .hostname { font-size:.75em; opacity:.5; margin-top:-.1rem; }
+    /* blinky LED pulse animation */
+    @keyframes ledPulse {
+      0% { background:#2ecc70; box-shadow:0 0 8px 2px #2ecc70aa; }
+      100% { background:#8b0f0f88; box-shadow:none; }
+    }
+    .led.pulse { animation: ledPulse 150ms ease-out forwards; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>Lightroute <span id="version" class="version"></span></h1>
+      <div id="hostname" class="hostname"></div>
+    </div>
+    <div class="spacer"></div>
+    <button id="applyBtn" class="btn" title="Apply (save to /config)"><i class="fa-solid fa-floppy-disk"></i> Apply</button>
+  </header>
+
+  <!-- STATUS -->
+  <section class="box" id="statusBox" data-collapsed="0">
+    <div class="box-head" data-collapse="statusBox">
+      <i class="fa-solid fa-gauge-high section-icon"></i><span>Status</span>
+      <i class="fa-solid fa-chevron-down chev"></i>
+    </div>
+    <div class="box-body">
+      <div class="row" style="gap:1rem; align-items:center;">
+        <span class="led off" id="led-uplink"></span> Uplink
+        <span class="led off" id="led-in"></span> Art-Net In
+        <span class="led off" id="led-out"></span> Art-Net Out
+        <div class="spacer"></div>
+        <label><input type="checkbox" id="verboseToggle"> Verbose</label>
+        <button class="btn" id="openLogs"><i class="fa-solid fa-terminal"></i> Live Log</button>
+        <button class="btn" id="testSweepBtn" title="Send test sweep to all enabled nodes (Shift+click to skip warning)"><i class="fa-solid fa-bolt"></i> Art-Net Test Sweep</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- OUTBOUND NODES -->
+  <section class="box" id="nodesBox" data-collapsed="0">
+    <div class="box-head" data-collapse="nodesBox">
+      <i class="fa-solid fa-diagram-project section-icon"></i><span>Outbound Nodes</span>
+      <i class="fa-solid fa-chevron-down chev"></i>
+    </div>
+    <div class="box-body">
+      <div class="muted">Ping interval: <span id="pingInterval">—</span>s</div>
+      <div id="nodes"></div>
+      <template id="nodeTpl">
+        <div class="node">
+          <input class="inp" placeholder="Public IP" data-ip style="min-width:11rem">
+          <input class="inp" type="number" placeholder="Port" data-port value="6454" min="1" max="65535" style="width:110px">
+          <label><input type="checkbox" data-univ="0"> U0</label>
+          <label><input type="checkbox" data-univ="1"> U1</label>
+          <label><input type="checkbox" data-univ="2"> U2</label>
+          <label><input type="checkbox" data-univ="3"> U3</label>
+          <label><input type="checkbox" data-enabled> Enabled</label>
+          <div class="group-right">
+            <!-- per-node debug LED (Art-Net OUT activity, ~3s window) -->
+            <span class="led sm off" title="Art-Net activity" data-led-out></span>
+            <span class="pill" data-ping>—</span>
+            <button class="btn danger" data-act="remove" title="Remove"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        </div>
+      </template>
+      <button class="btn" id="addNode"><i class="fa-solid fa-plus"></i> Add Node</button>
+    </div>
+  </section>
+
+  <!-- SETTINGS (collapsed by default) -->
+  <section class="box" id="settingsBox" data-collapsed="1">
+    <div class="box-head" data-collapse="settingsBox">
+      <i class="fa-solid fa-gear section-icon"></i><span>Settings</span>
+      <i class="fa-solid fa-chevron-down chev"></i>
+    </div>
+    <div class="box-body">
+      <label><input type="checkbox" id="bandwidthSave"> Save Bandwidth (send only changes)</label>
+      <div style="margin-top:.6rem">
+        <label>Ping interval (sec):
+          <input class="inp" type="number" id="pingIntervalInput" min="5" max="600" step="1" style="width:120px">
+        </label>
+      </div>
+    </div>
+  </section>
+
+<script>
+/* ===== Lightroute UI (icons, collapse anim, per-node LED) ===== */
+(function(){
+  // --- helpers ---
+  var $ = function(sel, root){ return (root||document).querySelector(sel); };
+  var $$ = function(sel, root){ return Array.prototype.slice.call((root||document).querySelectorAll(sel)); };
+  var jget = function(url){ return fetch(url, {cache:'no-store'}).then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); }); };
+  var jpost = function(url, body){ return fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}).then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); }); };
+  var num = function(v, d){ v=parseInt(v,10); return isFinite(v)?v:d; };
+
+  // --- collapse (animated) ---
+  function initCollapse(){
+    $$('.box').forEach(function(box){
+      var head = $('.box-head', box), body = $('.box-body', box);
+      if (!head || !body) return;
+      function applyState(){
+        var collapsed = box.getAttribute('data-collapsed') === '1';
+        if (collapsed){
+          // measure once to transition nicely on expand later
+          body.style.maxHeight = body.scrollHeight+'px';
+          // then collapse
+          requestAnimationFrame(function(){ body.style.maxHeight = '0px'; });
+        } else {
+          body.style.maxHeight = body.scrollHeight+'px';
+          // after transition, clear to let content grow naturally
+          setTimeout(function(){ body.style.maxHeight = ''; }, 220);
+        }
+      }
+      head.addEventListener('click', function(){
+        var collapsed = box.getAttribute('data-collapsed') === '1';
+        box.setAttribute('data-collapsed', collapsed ? '0' : '1');
+        applyState();
+      });
+      // initial state
+      applyState();
+    });
+  }
+
+  // --- nodes render/collect ---
+  var nodesHost = $('#nodes');
+  var nodeTpl = $('#nodeTpl');
+
+  function renderNode(n){
+    var el = document.importNode(nodeTpl.content.firstElementChild, true);
+    $('[data-ip]', el).value = n.ip || '';
+    $('[data-port]', el).value = n.port || 6454;
+    $('[data-enabled]', el).checked = !!n.enabled;
+    $$( '[data-univ]', el ).forEach(function(cb){
+      var u = num(cb.getAttribute('data-univ'), -1);
+      cb.checked = Array.isArray(n.universes) ? n.universes.indexOf(u) >= 0 : false;
+    });
+    var rm = $('[data-act="remove"]', el);
+    rm && rm.addEventListener('click', function(){ el.remove(); });
+    // data-key for ping/activity mapping
+    el.setAttribute('data-key', (n.ip||'') + ':' + (n.port || 6454));
+    $('[data-ping]', el).textContent = '—';
+    $('[data-led-out]', el).classList.remove('on'); $('[data-led-out]', el).classList.add('off');
+    return el;
+  }
+
+  function renderNodes(list){
+    nodesHost.innerHTML = '';
+    (list||[]).forEach(function(n){ nodesHost.appendChild(renderNode(n)); });
+  }
+
+  function collectNodes(){
+    return $$('.node', nodesHost).map(function(el){
+      var ip = ($('[data-ip]', el).value || '').trim();
+      if (!ip) return null;
+      var port = num($('[data-port]', el).value || '6454', 6454);
+      var enabled = !!$('[data-enabled]', el).checked;
+      var universes = $$( '[data-univ]', el ).filter(function(cb){ return cb.checked; })
+                       .map(function(cb){ return num(cb.getAttribute('data-univ'), -1); })
+                       .filter(function(u){ return u>=0 && u<=32767; });
+      return { ip: ip, port: port, enabled: enabled, universes: universes };
+    }).filter(Boolean);
+  }
+
+  // --- config load/save ---
+  function applyConfig(cfg){
+    var bw = $('#bandwidthSave'); if (bw) bw.checked = !!cfg.bandwidth_save;
+    var pinIn = $('#pingIntervalInput'); if (pinIn) pinIn.value = Number(cfg.ping_interval_sec)||30;
+    var pinLbl = $('#pingInterval'); if (pinLbl) pinLbl.textContent = Number(cfg.ping_interval_sec)||30;
+    renderNodes(cfg.outbound_nodes || []);
+  }
+  function loadConfig(){ return jget('/config').then(function(cfg){ applyConfig(cfg); return cfg; }); }
+  function saveConfig(){
+    var body = {
+      outbound_nodes: collectNodes(),
+      bandwidth_save: !!($('#bandwidthSave') && $('#bandwidthSave').checked),
+      ping_interval_sec: Math.max(5, num($('#pingIntervalInput') && $('#pingIntervalInput').value || '30', 30))
+    };
+    var btn = $('#applyBtn') || $('#saveBtn');
+    if (btn) {
+      btn.disabled = true;
+      var origText = btn.innerHTML;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+    }
+    return jpost('/config', body).then(function(){
+      if (btn) {
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> Saved!';
+      }
+      return loadConfig();
+    })
+      .finally(function(){
+        if (btn) {
+          setTimeout(function(){
+            btn.disabled = false;
+            btn.innerHTML = origText;
+          }, 1500);
+        }
+      });
+  }
+
+  // --- status LEDs ---
+  // Uplink: solid on/off status LED
+  // Art-Net In/Out: blinky activity LEDs
+  var _statusSeq = { in: 0, out: 0 };
+  
+  function pulseLed(el){
+    if (!el) return;
+    el.classList.remove('pulse'); void el.offsetWidth; // force reflow
+    el.classList.add('pulse');
+  }
+  
+  function setLed(el, on){
+    if (!el) return;
+    el.classList.toggle('on', !!on);
+    el.classList.toggle('off', !on);
+  }
+  
+  function pollStatus(){
+    jget('/status').then(function(s){
+      // Update version and hostname on first load
+      var verEl = $('#version');
+      if (verEl && s.version && !verEl.textContent) verEl.textContent = 'v' + s.version;
+      var hostEl = $('#hostname');
+      if (hostEl && s.hostname && !hostEl.textContent) hostEl.textContent = s.hostname;
+      
+      var ledUplink = $('#led-uplink');
+      var ledIn = $('#led-in');
+      var ledOut = $('#led-out');
+      
+      // Uplink: solid status LED (on = connected, off = disconnected)
+      setLed(ledUplink, s.uplink);
+      
+      // Art-Net In: blinky - pulse when seq increases
+      if (s.artnet_in_seq > _statusSeq.in) {
+        var delta = Math.min(s.artnet_in_seq - _statusSeq.in, 5);
+        for (var i = 0; i < delta; i++) {
+          setTimeout(function(){ pulseLed(ledIn); }, i * 60);
+        }
+        _statusSeq.in = s.artnet_in_seq;
+      }
+      
+      // Art-Net Out: blinky - pulse when seq increases
+      if (s.artnet_out_seq > _statusSeq.out) {
+        var deltaOut = Math.min(s.artnet_out_seq - _statusSeq.out, 5);
+        for (var j = 0; j < deltaOut; j++) {
+          setTimeout(function(){ pulseLed(ledOut); }, j * 60);
+        }
+        _statusSeq.out = s.artnet_out_seq;
+      }
+    }).catch(function(){});
+  }
+
+  // --- pings ---
+function applyPings(list){
+  var map = {}; (list||[]).forEach(function(p){ map[(p.ip+':' + (p.port||6454))] = p; });
+  document.querySelectorAll('#nodes .node').forEach(function(el){
+    var key = el.getAttribute('data-key') || ((el.querySelector('[data-ip]').value||'')+':'+(el.querySelector('[data-port]').value||'6454'));
+    var pill = el.querySelector('[data-ping]');
+    if (pill) pill.classList.add('ping-pill');
+    var p = map[key];
+    // clear previous classes
+    if (pill) pill.classList.remove('ping-good','ping-warn','ping-bad','ping-timeout');
+    el.classList.remove('timeout'); // for LED solid red
+
+    if (!p) return;
+
+    // text + color thresholds
+    if (!p.alive) {
+      if (pill) { pill.textContent = 'timeout'; pill.classList.add('ping-timeout'); }
+      el.classList.add('timeout'); // LED solid red
+      return;
+    }
+
+    var r = p.rtt_ms==null ? '-' : p.rtt_ms;
+    if (pill) pill.textContent = (r==='-'?'-':(r+' ms'));
+
+    if (typeof p.rtt_ms === 'number') {
+      if (p.rtt_ms <= 10)      pill && pill.classList.add('ping-good');
+      else if (p.rtt_ms <= 200) pill && pill.classList.add('ping-warn');
+      else                     pill && pill.classList.add('ping-bad');
+    } else {
+      // no RTT but alive (e.g., tcp reachability) -> warn
+      pill && pill.classList.add('ping-warn');
+    }
+  });
+}
+function pollPings(){
+  // try /pings, fallback to /ping
+  fetch('/pings', { cache: 'no-store' })
+    .then(r => r.ok ? r.json() : fetch('/ping', { cache: 'no-store' }).then(r2 => r2.ok ? r2.json() : null))
+    .then(data => {
+      if (!data || !Array.isArray(data.list)) return;
+      // update pill colors + timeout LED
+      applyPings(data.list);
+      // keep the label in sync if you show it
+      var lbl = document.getElementById('pingInterval');
+      if (lbl && data.ping_interval_sec) lbl.textContent = data.ping_interval_sec;
+    })
+    .catch(() => {/* ignore */});
+}
+
+
+var _lastSeqMap = {}; // key "ip:port" -> last seen seq
+var _lastSeqMap = {}; // key "ip:port" -> last seen seq
+var _activityES = null;
+
+function pulse(el){
+  if (!el) return;
+  el.classList.remove('pulse'); void el.offsetHeight; // restart
+  el.classList.add('pulse');
+  el.addEventListener('animationend', function h(){
+    el.classList.remove('pulse');
+    el.removeEventListener('animationend', h);
+  });
+}
+
+// Per-node pulse queues (key = "ip:port")
+var _pulseQ = Object.create(null); // { pending, draining }
+var PULSE_SPACING_MS = 60;         // spacing between queued blinks
+var MAX_QUEUE = 20;                // cap to avoid backlog
+
+function enqueuePulses(key, count){
+  var q = _pulseQ[key] || (_pulseQ[key] = { pending:0, draining:false });
+  q.pending = Math.min(q.pending + (count|0), MAX_QUEUE);
+  if (!q.draining) drainPulseQueue(key);
+}
+
+function drainPulseQueue(key){
+  var q = _pulseQ[key]; if (!q) return;
+  q.draining = true;
+  (function step(){
+    if (!q.pending) { q.draining = false; return; }
+    // find LED element for this node
+    var el = null;
+    document.querySelectorAll('#nodes .node').forEach(function(n){
+      var k = n.getAttribute('data-key') || ((n.querySelector('[data-ip]').value||'')+':'+(n.querySelector('[data-port]').value||'6454'));
+      if (k === key) el = n.querySelector('[data-led-out]');
+    });
+    pulse(el);
+    q.pending--;
+    setTimeout(step, PULSE_SPACING_MS);
+  })();
+}
+
+
+var _lastSeqMap = {};    // key -> last seen seq
+var _activityES = null;  // SSE fallback handle
+
+function pollActivity(){
+  fetch('/activity').then(function(r){
+    if (!r.ok) throw new Error('activity:'+r.status);
+    return r.json();
+  }).then(function(data){
+    var list = data.list || [];
+    for (var i=0;i<list.length;i++){
+      var key = (list[i].ip + ':' + (list[i].port||6454));
+      var cur = (list[i].seq|0);
+      var prev = _lastSeqMap[key] || 0;
+      var delta = cur - prev;
+      if (delta > 0) enqueuePulses(key, Math.min(delta, 10)); // more packets => more blinks
+      _lastSeqMap[key] = cur;
+    }
+  }).catch(function(){
+    // Fallback: pulse per OUT line from SSE logs (no verbose needed if backend logs OUT lines unconditionally)
+    if (_activityES) return;
+    try {
+      _activityES = new EventSource('/logs');
+      _activityES.onmessage = function(e){
+        if (!e || !e.data) return;
+        // [OUT] 1.2.3.4:6454 ...  OR  [OUT RAW] 1.2.3.4:6454 ...
+        var m = e.data.match(/\[OUT(?: RAW)?\]\s+(\d+\.\d+\.\d+\.\d+):(\d+)/);
+        if (!m) return;
+        var key = m[1] + ':' + m[2];
+        enqueuePulses(key, 1);
+      };
+    } catch (e) {}
+  });
+}
+
+
+
+
+  // --- controls ---
+  var applyBtn = $('#applyBtn') || $('#saveBtn');
+  if (applyBtn) applyBtn.addEventListener('click', function(ev){
+    ev.preventDefault();
+    saveConfig();
+  });
+
+  var addBtn = $('#addNode');
+  if (addBtn) addBtn.addEventListener('click', function(){ nodesHost.appendChild(renderNode({ ip:'', port:6454, enabled:true, universes:[] })); });
+
+  var verboseToggle = $('#verboseToggle');
+  if (verboseToggle) verboseToggle.addEventListener('change', function(e){ jpost('/verbose', { enabled: !!e.target.checked }).catch(function(){}); });
+
+  var openLogsBtn = $('#openLogs');
+  if (openLogsBtn) openLogsBtn.addEventListener('click', function(){
+    fetch('/console.html', { method:'HEAD' }).then(function(r){ if (r.ok) window.open('/console.html','_blank'); else window.open('/logs','_blank'); })
+      .catch(function(){ window.open('/console.html','_blank'); });
+  });
+
+  // --- test sweep ---
+  var sweepBtn = $('#testSweepBtn');
+  if (sweepBtn) {
+    sweepBtn.addEventListener('click', function(ev){
+      ev.preventDefault();
+      
+      // Skip warning if Shift is held
+      if (!ev.shiftKey) {
+        var confirmed = confirm(
+          'WARNING: Test Sweep\n\n' +
+          'This will briefly flash ALL DMX channels (0-512) on EVERY configured and enabled outbound node from 0 to 255 and back to 0.\n\n' +
+          'Any current DMX values may be lost.\n\n' +
+          'Tip: Hold Shift while clicking to skip this warning.\n\n' +
+          'Continue?'
+        );
+        if (!confirmed) return;
+      }
+      
+      // Disable button and show progress
+      var origText = sweepBtn.innerHTML;
+      sweepBtn.disabled = true;
+      sweepBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sweeping...';
+      
+      fetch('/sweep', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          if (data.success) {
+            sweepBtn.innerHTML = '<i class="fa-solid fa-check"></i> Done!';
+          } else {
+            sweepBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> ' + (data.error || 'Failed');
+          }
+        })
+        .catch(function(err){
+          sweepBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> Error';
+          console.error('Sweep error:', err);
+        })
+        .finally(function(){
+          setTimeout(function(){
+            sweepBtn.disabled = false;
+            sweepBtn.innerHTML = origText;
+          }, 2000);
+        });
+    });
+  }
+
+  // --- keyboard shortcuts ---
+  document.addEventListener('keydown', function(e){
+    // Ctrl+S or Cmd+S: Apply/Save config
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault();
+      e.stopPropagation();
+      saveConfig();
+    }
+    
+    // Ctrl+Shift+N or Cmd+Shift+N: Add new outbound node
+    // (using Shift to avoid conflict with browser's Ctrl+N)
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'N') {
+      e.preventDefault();
+      e.stopPropagation();
+      var newNode = renderNode({ ip:'', port:6454, enabled:true, universes:[] });
+      nodesHost.appendChild(newNode);
+      // Focus the IP input of the newly added node
+      var ipInput = $('[data-ip]', newNode);
+      if (ipInput) {
+        ipInput.focus();
+        // Scroll to the new node if needed
+        newNode.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  });
+
+  // --- boot ---
+  initCollapse();
+  loadConfig();
+  setInterval(pollStatus, 500);  // status polling (uplink is solid, Art-Net In/Out are blinky)
+  setInterval(pollPings, 2000);
+  setInterval(pollActivity, 200);  // fast polling for per-node blinky LEDs
+})();
+</script>
+</body>
+</html>

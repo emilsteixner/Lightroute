@@ -1,0 +1,25 @@
+{
+  "http_port": 3000,
+  "ping_interval_sec": 9999,
+  "bandwidth_save": false,
+  "strict_artnet_only": true,
+  "outbound_nodes": [
+    {
+      "ip": "192.168.137.1",
+      "port": 6454,
+      "enabled": false,
+      "universes": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "ip": "1.1.1.1",
+      "port": 6454,
+      "enabled": true,
+      "universes": []
+    }
+  ]
+}
