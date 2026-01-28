@@ -7,34 +7,10 @@
   <link rel="stylesheet" href="style.css" />
   <!-- Font Awesome for icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
-  <style>
-    /* --- Visual refinements (non-breaking) --- */
-    .node { padding:.4rem .4rem; border:1px solid #242424; margin:.4rem 0; border-radius:.4rem; display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
-    .pill { padding:.1rem .5rem; border-radius:999px; border:1px solid #5555; font-size:.85em; }
-    .box-head { display:flex; align-items:center; gap:.5rem; cursor:pointer; user-select:none; }
-    .box-head .section-icon { opacity:.85; }
-    .box-head .chev { margin-left:auto; transition: transform .18s ease; }
-    .box[data-collapsed="1"] .box-head .chev { transform: rotate(-90deg); }
-    .box-body { overflow:hidden; transition: max-height .22s ease, opacity .18s ease; }
-    .box[data-collapsed="1"] .box-body { max-height:0 !important; opacity:.0; pointer-events:none; }
-    .box[data-collapsed="0"] .box-body { opacity:1; }
-    .led { width:.8rem; height:.8rem; border-radius:50%; display:inline-block; margin-right:.35rem; border:1px solid #00000033; background:#8b0f0f88; vertical-align:middle; }
-    .led.on { background:#2ecc70cc; }
-    .led.sm { width:.6rem; height:.6rem; border-radius:50%; margin:0 .25rem 0 0; }
-    /* tiny spacing for the per-node LED + ping pill */
-    .node .group-right { margin-left:auto; display:flex; align-items:center; gap:.4rem; }
-    /* header branding */
-    .brand { display:flex; flex-direction:column; gap:0; }
-    .brand h1 { margin:0; line-height:1.2; }
-    .version { font-size:.5em; opacity:.6; font-weight:normal; }
-    .hostname { font-size:.75em; opacity:.5; margin-top:-.1rem; }
-    /* blinky LED pulse animation */
-    @keyframes ledPulse {
-      0% { background:#2ecc70; box-shadow:0 0 8px 2px #2ecc70aa; }
-      100% { background:#8b0f0f88; box-shadow:none; }
-    }
-    .led.pulse { animation: ledPulse 150ms ease-out forwards; }
-  </style>
+  <!-- Favicons -->
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="favicon-180x180.png" />
 </head>
 <body>
   <header class="topbar">
