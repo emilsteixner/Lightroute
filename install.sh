@@ -504,7 +504,7 @@ echo -e "${GREEN}Service Management:${NC}"
 echo "  Start service:          systemctl start $SERVICE_NAME"
 echo "  Stop service:           systemctl stop $SERVICE_NAME"
 echo "  Restart service:        systemctl restart $SERVICE_NAME"
-echo "  Enable on boot:         systemctl enable $SERVICE_NAME" \(enabled by default\)
+echo "  Enable on boot:         systemctl enable $SERVICE_NAME enabled by default"
 echo "  Check status:           systemctl status $SERVICE_NAME"
 echo "  View logs:              journalctl -u $SERVICE_NAME -f"
 echo ""
