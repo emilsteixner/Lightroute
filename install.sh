@@ -352,11 +352,34 @@ if [ ! -f "package.json" ]; then
     exit 1
 fi
 
-print_status "Installing npm dependencies (production only)..."
+print_status "Installing npm dependencies (including TypeScript for build)..."
 # Run as the service user - NOW IT CAN WRITE!
-su -s /bin/bash -c "cd $INSTALL_DIR && npm install --production --no-optional --silent" "$SERVICE_USER"
+su -s /bin/bash -c "cd $INSTALL_DIR && npm install --no-optional --silent" "$SERVICE_USER"
 
 print_status "Dependencies installed successfully"
+
+################################################################################
+# Build TypeScript application
+################################################################################
+
+print_header "Building TypeScript Application"
+
+if [ -f "$INSTALL_DIR/tsconfig.json" ] && [ -f "$INSTALL_DIR/src/lightroute.ts" ]; then
+    print_status "TypeScript source detected. Building application..."
+    su -s /bin/bash -c "cd $INSTALL_DIR && npm run build" "$SERVICE_USER"
+
+    if [ ! -f "$INSTALL_DIR/dist/lightroute.js" ]; then
+        print_error "TypeScript build failed - dist/lightroute.js not found"
+        exit 1
+    fi
+
+    print_status "✓ TypeScript build successful"
+    print_status "  Source: src/lightroute.ts"
+    print_status "  Output: dist/lightroute.js"
+else
+    print_status "No TypeScript source found (no tsconfig.json or src/ directory)"
+    print_status "  Will run lightroute.js directly if present"
+fi
 
 ################################################################################
 # Create systemd service
@@ -380,7 +403,8 @@ Type=simple
 User=$SERVICE_USER
 Group=$SERVICE_USER
 WorkingDirectory=$INSTALL_DIR
-ExecStart=/usr/bin/node $INSTALL_DIR/lightroute.js
+# Use compiled TypeScript output if available, otherwise fall back to lightroute.js
+ExecStart=/bin/sh -c "if [ -f \"$INSTALL_DIR/dist/lightroute.js\" ]; then exec /usr/bin/node \"$INSTALL_DIR/dist/lightroute.js\"; else exec /usr/bin/node \"$INSTALL_DIR/lightroute.js\"; fi"
 ExecReload=/bin/kill -HUP \$MAINPID
 Restart=on-failure
 RestartSec=5
@@ -444,9 +468,14 @@ print_header "Verifying Installation"
 
 errors_found=0
 
-if [ ! -f "$INSTALL_DIR/lightroute.js" ]; then
-    print_error "lightroute.js not found in installation directory"
+# Check for either TypeScript build output or legacy JavaScript file
+if [ ! -f "$INSTALL_DIR/dist/lightroute.js" ] && [ ! -f "$INSTALL_DIR/lightroute.js" ]; then
+    print_error "Neither dist/lightroute.js nor lightroute.js found in installation directory"
     errors_found=$((errors_found + 1))
+elif [ -f "$INSTALL_DIR/dist/lightroute.js" ]; then
+    print_status "✓ Compiled TypeScript build found at dist/lightroute.js"
+else
+    print_status "✓ Legacy lightroute.js found"
 fi
 
 if [ ! -f "$INSTALL_DIR/package.json" ]; then
